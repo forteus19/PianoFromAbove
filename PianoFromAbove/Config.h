@@ -180,6 +180,7 @@ struct VizSettings : public ISettings {
     int iBarColor;
     std::wstring sBackground;
     bool bColorLoop;
+    bool bShowInfo;
 };
 
 class Config : public ISettings

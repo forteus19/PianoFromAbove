@@ -62,6 +62,7 @@
 #define IDC_ASSOCIATEFILES              1047
 #define IDC_RESTOREDEFAULTS             1048
 #define IDC_LIBRARY                     1049
+#define IDC_PPQN                        1049
 #define IDC_LIBRARYFILES                1050
 #define IDC_VOLUME                      1053
 #define IDC_SPEED                       1054
@@ -71,6 +72,7 @@
 #define IDC_NOTES                       1059
 #define IDC_LENGTH                      1060
 #define IDC_SHOWCONTROLS                1061
+#define IDC_LENGTH2                     1061
 #define IDC_FIRSTKEY                    1062
 #define IDC_LASTKEY                     1063
 #define IDC_THROUGH                     1064
@@ -114,6 +116,7 @@
 #define IDC_SPLASHRESET2                1110
 #define IDC_BACKGROUNDRESET             1110
 #define IDC_COLORLOOP                   1111
+#define IDC_SHOWINFO                    1112
 #define ID_FILE_PLAYFILE                40001
 #define ID_FILE_ADDFILE                 40002
 #define ID_FILE_ADDFOLDER               40003
@@ -213,7 +216,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        160
 #define _APS_NEXT_COMMAND_VALUE         40174
-#define _APS_NEXT_CONTROL_VALUE         1109
+#define _APS_NEXT_CONTROL_VALUE         1113
 #define _APS_NEXT_SYMED_VALUE           102
 #endif
 #endif

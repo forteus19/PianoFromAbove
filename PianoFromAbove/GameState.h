@@ -264,6 +264,7 @@ private:
     bool m_bMute;
     double m_dVolume;
     size_t m_iNotesPlayed = 0;
+    size_t m_iCurrentPolyphony = 0;
     bool m_bTickMode = false;
 
     // FPS variables
@@ -271,6 +272,7 @@ private:
     int m_iFPSCount;
     long long m_llFPSTime;
     double m_dFPS;
+    vector<double> prevFPS;
 
     // Devices
     MIDIOutDevice m_OutDevice;

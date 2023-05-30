@@ -449,6 +449,7 @@ INT_PTR WINAPI VizProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         CheckDlgButton(hWnd, IDC_PITCHBENDS, viz.bVisualizePitchBends);
         CheckDlgButton(hWnd, IDC_FFMPEG, viz.bDumpFrames);
         CheckDlgButton(hWnd, IDC_COLORLOOP, viz.bColorLoop);
+        CheckDlgButton(hWnd, IDC_SHOWINFO, viz.bShowInfo);
 
         const wchar_t* codepages[] = { L"CP-1252 (Western)", L"CP-932 (Japanese)", L"UTF-8" };
         for (int i = 0; i < sizeof(codepages) / sizeof(const wchar_t*); i++)
@@ -524,6 +525,7 @@ INT_PTR WINAPI VizProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             viz.bVisualizePitchBends = IsDlgButtonChecked(hWnd, IDC_PITCHBENDS);
             viz.bDumpFrames = IsDlgButtonChecked(hWnd, IDC_FFMPEG);
             viz.bColorLoop = IsDlgButtonChecked(hWnd, IDC_COLORLOOP);
+            viz.bShowInfo = IsDlgButtonChecked(hWnd, IDC_SHOWINFO);
 
             config.SetVizSettings(viz);
             SetWindowLongPtr(hWnd, DWLP_MSGRESULT, PSNRET_NOERROR);
@@ -593,6 +595,8 @@ INT_PTR WINAPI TracksProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam )
             _stprintf_s( buf, TEXT( "%lld:%02.0lf" ), mInfo.llTotalMicroSecs / 60000000,
                                                     ( mInfo.llTotalMicroSecs % 60000000 ) / 1000000.0 );
             SetWindowText( GetDlgItem( hWnd, IDC_LENGTH ), buf );
+            _stprintf_s(buf, TEXT("%d"), mInfo.iDivision);
+            SetWindowText(GetDlgItem(hWnd, IDC_PPQN), buf);
 
             // Initialize the state vars
             vMuted.resize( mInfo.iNumChannels );

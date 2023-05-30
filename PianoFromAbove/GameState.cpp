@@ -9,6 +9,7 @@
 *
 *************************************************************************************************/
 #include <algorithm>
+#include <numeric>
 #include <tchar.h>
 #include <ppl.h>
 #include <dwmapi.h>
@@ -801,6 +802,8 @@ GameState::GameError MainScreen::Init()
 
     }
 
+    m_iNotesPlayed = 0;
+
     return Success;
 }
 
@@ -1138,14 +1141,19 @@ GameState::GameError MainScreen::Logic( void )
     m_Timer.Start();
     m_RealTimer.Start();
 
-    // Compute FPS every half a second
+    // Compute FPS every 0.1 seconds
+    // Take the average of the previous fps counts
     m_llFPSTime += llRealElapsed;
     m_iFPSCount++;
-    if ( m_llFPSTime >= 500000 )
+    if ( m_llFPSTime >= 100000 )
     {
-        m_dFPS = m_iFPSCount / ( m_llFPSTime / 1000000.0 );
+        prevFPS.insert(prevFPS.begin(), m_iFPSCount / (m_llFPSTime / 1000000.0));
         m_llFPSTime = m_iFPSCount = 0;
     }
+    if (prevFPS.size() > 20) {
+        prevFPS.pop_back();
+    }
+    m_dFPS = accumulate(prevFPS.begin(), prevFPS.end(), 0.0) / 20;
 
     // If we just paused, kill the music. SetVolume is better than AllNotesOff
     if ( ( bPausedChanged || bMuteChanged ) && ( m_bPaused || m_bMute ) )
@@ -1197,21 +1205,30 @@ GameState::GameError MainScreen::Logic( void )
             else if (!m_bMute && !m_vTrackSettings[pEvent->GetTrack()].aChannels[pEvent->GetChannel()].bMuted) {
                 m_OutDevice.PlayEvent(pEvent->GetEventCode(), pEvent->GetParam1(),
                     static_cast<int>(pEvent->GetParam2() * dVolumeCorrect + 0.5));
-                notes_played++;
+                ++notes_played;
+                ++m_iNotesPlayed;
             }
             UpdateState( m_iStartPos );
             m_iStartPos++;
+
+            // Update polyphony
+            if (pEvent->GetChannelEventType() == MIDIChannelEvent::NoteOn) {
+                ++m_iCurrentPolyphony;
+            }
+            if (pEvent->GetChannelEventType() == MIDIChannelEvent::NoteOff) {
+                --m_iCurrentPolyphony;
+            }
         }
         
         // Update NPS
-        if (cViz.bNerdStats) {
+        //if (cViz.bNerdStats) {
             for (; !m_dNPSNotes.empty(); m_dNPSNotes.pop_front()) {
                 if (std::get<0>(m_dNPSNotes.front()) >= m_llStartTime - 1000000)
                     break;
             }
             if (notes_played != 0)
                 m_dNPSNotes.push_back(std::make_tuple(m_llStartTime, notes_played));
-        }
+        //}
     }
 
     AdvanceIterators( m_llStartTime, false );
@@ -1727,7 +1744,7 @@ void MainScreen::RenderGlobals()
     {
         float fMaxKeyCY = m_pRenderer->GetBufferHeight() * KBPercent;
         float fIdealKeyCY = m_fWhiteCX / KeyRatio;
-        // .95 for the top vs near. 2.0 for the spacer. .93 for the transition and the red. ESTIMATE.
+        // .95 for the top vs near. 2.0 for the spacer. ESTIMATE.
         fIdealKeyCY = ( fIdealKeyCY / 0.95f + 2.0f ) / 0.93f;
         m_fNotesCY = floor( m_pRenderer->GetBufferHeight() - min( fIdealKeyCY, fMaxKeyCY ) + 0.5f );
     }
@@ -1749,84 +1766,84 @@ void MainScreen::RenderLines()
     if (m_bBackgroundLoaded)
         return;
 
-    m_pRenderer->DrawRect( m_fNotesX, m_fNotesY, m_fNotesCX, m_fNotesCY, m_csBackground.iPrimaryRGB );
+    m_pRenderer->DrawRect( m_fNotesX, m_fNotesY, m_fNotesCX, m_fNotesCY + 50, m_csBackground.iPrimaryRGB );
 
     // Vertical lines
-    for ( int i = m_iStartNote + 1; i <= m_iEndNote; i++ )
-        if ( !MIDI::IsSharp( i - 1 ) && !MIDI::IsSharp( i ) )
-        {
-            int iWhiteKeys = MIDI::WhiteCount( m_iStartNote, i );
-            float fStartX = MIDI::IsSharp( m_iStartNote ) * SharpRatio / 2.0f;
-            float x = m_fNotesX + m_fWhiteCX * ( iWhiteKeys + fStartX );
-            x = floor( x + 0.5f ); // Needs to be rounded because of the gradient
-            m_pRenderer->DrawRect( x - 1.0f, m_fNotesY, 3.0f, m_fNotesCY,
-                m_csBackground.iDarkRGB, m_csBackground.iVeryDarkRGB, m_csBackground.iVeryDarkRGB, m_csBackground.iDarkRGB );
-        }
+    //for ( int i = m_iStartNote + 1; i <= m_iEndNote; i++ )
+    //    if ( !MIDI::IsSharp( i - 1 ) && !MIDI::IsSharp( i ) )
+    //    {
+    //        int iWhiteKeys = MIDI::WhiteCount( m_iStartNote, i );
+    //        float fStartX = MIDI::IsSharp( m_iStartNote ) * SharpRatio / 2.0f;
+    //        float x = m_fNotesX + m_fWhiteCX * ( iWhiteKeys + fStartX );
+    //        x = floor( x + 0.5f ); // Needs to be rounded because of the gradient
+    //        m_pRenderer->DrawRect( x - 1.0f, m_fNotesY, 3.0f, m_fNotesCY,
+    //            m_csBackground.iDarkRGB, m_csBackground.iVeryDarkRGB, m_csBackground.iVeryDarkRGB, m_csBackground.iDarkRGB );
+    //    }
 
-    // Horizontal (Hard!)
-    int iDivision = m_MIDI.GetInfo().iDivision;
-    // fuck this lmao
-    if ( !( iDivision & 0x8000 ) )
-    {
-        // Copy time state vars
-        int iCurrTick = m_iStartTick - 1;
-        long long llEndTime = (m_bTickMode ? m_iStartTick : m_llStartTime) + m_llTimeSpan;
+    //// Horizontal (Hard!)
+    //int iDivision = m_MIDI.GetInfo().iDivision;
+    //// fuck this lmao
+    //if ( !( iDivision & 0x8000 ) )
+    //{
+    //    // Copy time state vars
+    //    int iCurrTick = m_iStartTick - 1;
+    //    long long llEndTime = (m_bTickMode ? m_iStartTick : m_llStartTime) + m_llTimeSpan;
 
-        // Copy tempo state vars
-        int iLastTempoTick = m_iLastTempoTick;
-        int iMicroSecsPerBeat = m_iMicroSecsPerBeat;
-        long long llLastTempoTime = m_llLastTempoTime;
-        eventvec_t::const_iterator itNextTempo = m_itNextTempo;
+    //    // Copy tempo state vars
+    //    int iLastTempoTick = m_iLastTempoTick;
+    //    int iMicroSecsPerBeat = m_iMicroSecsPerBeat;
+    //    long long llLastTempoTime = m_llLastTempoTime;
+    //    eventvec_t::const_iterator itNextTempo = m_itNextTempo;
 
-        // Copy signature state vars
-        int iLastSignatureTick = m_iLastSignatureTick;
-        int iBeatsPerMeasure = m_iBeatsPerMeasure;
-        int iBeatType = m_iBeatType;
-        eventvec_t::const_iterator itNextSignature = m_itNextSignature;
+    //    // Copy signature state vars
+    //    int iLastSignatureTick = m_iLastSignatureTick;
+    //    int iBeatsPerMeasure = m_iBeatsPerMeasure;
+    //    int iBeatType = m_iBeatType;
+    //    eventvec_t::const_iterator itNextSignature = m_itNextSignature;
 
-        // Compute initial next beat tick and next beat time
-        long long llNextBeatTime = 0;
-        int iNextBeatTick = 0;
-        do
-        {
-            iNextBeatTick = GetBeatTick( iCurrTick + 1, iBeatType, iLastSignatureTick );
+    //    // Compute initial next beat tick and next beat time
+    //    long long llNextBeatTime = 0;
+    //    int iNextBeatTick = 0;
+    //    do
+    //    {
+    //        iNextBeatTick = GetBeatTick( iCurrTick + 1, iBeatType, iLastSignatureTick );
 
-            // Next beat crosses the next tempo event. handle the event and recalculate next beat time
-            while ( itNextTempo != m_vTempo.end() && m_vMetaEvents[itNextTempo->second]->GetDataLen() == 3 &&
-                    iNextBeatTick > m_vMetaEvents[itNextTempo->second]->GetAbsT() )
-            {
-                MIDIMetaEvent *pEvent = m_vMetaEvents[itNextTempo->second];
-                MIDI::Parse24Bit( pEvent->GetData(), 3, &iMicroSecsPerBeat );
-                iLastTempoTick = pEvent->GetAbsT();
-                llLastTempoTime = pEvent->GetAbsMicroSec();
-                ++itNextTempo;
-            }
-            while ( itNextSignature != m_vSignature.end() && m_vMetaEvents[itNextSignature->second]->GetDataLen() == 4 &&
-                    iNextBeatTick > m_vMetaEvents[itNextSignature->second]->GetAbsT() )
-            {
-                MIDIMetaEvent *pEvent = m_vMetaEvents[itNextSignature->second];
-                iBeatsPerMeasure = pEvent->GetData()[0];
-                iBeatType = 1 << pEvent->GetData()[1];
-                iLastSignatureTick = pEvent->GetAbsT();
-                iNextBeatTick = GetBeatTick( iLastSignatureTick + 1, iBeatType, iLastSignatureTick );
-                ++itNextSignature;
-            }
+    //        // Next beat crosses the next tempo event. handle the event and recalculate next beat time
+    //        while ( itNextTempo != m_vTempo.end() && m_vMetaEvents[itNextTempo->second]->GetDataLen() == 3 &&
+    //                iNextBeatTick > m_vMetaEvents[itNextTempo->second]->GetAbsT() )
+    //        {
+    //            MIDIMetaEvent *pEvent = m_vMetaEvents[itNextTempo->second];
+    //            MIDI::Parse24Bit( pEvent->GetData(), 3, &iMicroSecsPerBeat );
+    //            iLastTempoTick = pEvent->GetAbsT();
+    //            llLastTempoTime = pEvent->GetAbsMicroSec();
+    //            ++itNextTempo;
+    //        }
+    //        while ( itNextSignature != m_vSignature.end() && m_vMetaEvents[itNextSignature->second]->GetDataLen() == 4 &&
+    //                iNextBeatTick > m_vMetaEvents[itNextSignature->second]->GetAbsT() )
+    //        {
+    //            MIDIMetaEvent *pEvent = m_vMetaEvents[itNextSignature->second];
+    //            iBeatsPerMeasure = pEvent->GetData()[0];
+    //            iBeatType = 1 << pEvent->GetData()[1];
+    //            iLastSignatureTick = pEvent->GetAbsT();
+    //            iNextBeatTick = GetBeatTick( iLastSignatureTick + 1, iBeatType, iLastSignatureTick );
+    //            ++itNextSignature;
+    //        }
 
-            // Finally render the beat or measure
-            int iNextBeat = GetBeat( iNextBeatTick, iBeatType, iLastSignatureTick );
-            bool bIsMeasure = !( ( iNextBeat < 0 ? -iNextBeat : iNextBeat ) % iBeatsPerMeasure );
-            llNextBeatTime = GetTickTime( iNextBeatTick, iLastTempoTick, llLastTempoTime, iMicroSecsPerBeat ); 
-            float y = m_fNotesY + m_fNotesCY * ( 1.0f - ( (float)(m_bTickMode ? iNextBeatTick : llNextBeatTime) - m_llRndStartTime) / m_llTimeSpan );
-            y = floor( y + 0.5f );
-            if ( bIsMeasure && y + 1.0f > m_fNotesY )
-                m_pRenderer->DrawRect( m_fNotesX, y - 1.0f, m_fNotesCX, 3.0f,
-                    m_csBackground.iDarkRGB, m_csBackground.iDarkRGB, m_csBackground.iVeryDarkRGB, m_csBackground.iVeryDarkRGB );
+    //        // Finally render the beat or measure
+    //        int iNextBeat = GetBeat( iNextBeatTick, iBeatType, iLastSignatureTick );
+    //        bool bIsMeasure = !( ( iNextBeat < 0 ? -iNextBeat : iNextBeat ) % iBeatsPerMeasure );
+    //        llNextBeatTime = GetTickTime( iNextBeatTick, iLastTempoTick, llLastTempoTime, iMicroSecsPerBeat ); 
+    //        float y = m_fNotesY + m_fNotesCY * ( 1.0f - ( (float)(m_bTickMode ? iNextBeatTick : llNextBeatTime) - m_llRndStartTime) / m_llTimeSpan );
+    //        y = floor( y + 0.5f );
+    //        if ( bIsMeasure && y + 1.0f > m_fNotesY )
+    //            m_pRenderer->DrawRect( m_fNotesX, y - 1.0f, m_fNotesCX, 3.0f,
+    //                m_csBackground.iDarkRGB, m_csBackground.iDarkRGB, m_csBackground.iVeryDarkRGB, m_csBackground.iVeryDarkRGB );
 
-            iCurrTick = iNextBeatTick;
-        }
-        while ((m_bTickMode ? iNextBeatTick : llNextBeatTime) <= llEndTime );
-        // hopefully no race condition?
-    }
+    //        iCurrTick = iNextBeatTick;
+    //    }
+    //    while ((m_bTickMode ? iNextBeatTick : llNextBeatTime) <= llEndTime );
+    //    // hopefully no race condition?
+    //}
 }
 
 void MainScreen::RenderNotes()
@@ -1890,7 +1907,7 @@ void MainScreen::RenderNotes()
         }
     }
 
-    m_pRenderer->RenderBatch(true);
+    //m_pRenderer->RenderBatch(true);
     m_vThreadWork.clear();
 }
 
@@ -2040,20 +2057,20 @@ void MainScreen::RenderKeys()
         {
             if ( m_pNoteState[i] == -1 )
             {
-                m_pRenderer->DrawRect( fCurX + fKeyGap1 , fCurY, m_fWhiteCX - fKeyGap, fTopCY + fNearCY,
+                m_pRenderer->DrawRect( fCurX + fKeyGap1 , fCurY, m_fWhiteCX, fTopCY + fNearCY,
                     m_csKBWhite.iDarkRGB, m_csKBWhite.iDarkRGB, m_csKBWhite.iPrimaryRGB, m_csKBWhite.iPrimaryRGB );
-                m_pRenderer->DrawRect( fCurX + fKeyGap1 , fCurY + fTopCY, m_fWhiteCX - fKeyGap, fNearCY,
+                m_pRenderer->DrawRect( fCurX + fKeyGap1 , fCurY + fTopCY, m_fWhiteCX, fNearCY,
                     m_csKBWhite.iDarkRGB, m_csKBWhite.iDarkRGB, m_csKBWhite.iVeryDarkRGB, m_csKBWhite.iVeryDarkRGB );
-                m_pRenderer->DrawRect( fCurX + fKeyGap1, fCurY + fTopCY, m_fWhiteCX - fKeyGap, 2.0f,
-                    m_csKBBackground.iDarkRGB, m_csKBBackground.iDarkRGB, m_csKBWhite.iVeryDarkRGB, m_csKBWhite.iVeryDarkRGB );
+                /*m_pRenderer->DrawRect( fCurX + fKeyGap1, fCurY + fTopCY, m_fWhiteCX - fKeyGap, 2.0f,
+                    m_csKBBackground.iDarkRGB, m_csKBBackground.iDarkRGB, m_csKBWhite.iVeryDarkRGB, m_csKBWhite.iVeryDarkRGB );*/
 
-                if ( i == MIDI::C4 )
+                /*if ( i == MIDI::C4 )
                 {
                     float fMXGap = floor( m_fWhiteCX * 0.25f + 0.5f );
                     float fMCX = m_fWhiteCX - fMXGap * 2.0f - fKeyGap;
                     float fMY = max( fCurY + fTopCY - fMCX - 5.0f, fCurY + fSharpCY + 5.0f );
                     m_pRenderer->DrawRect( fCurX + fKeyGap1 + fMXGap, fMY, fMCX, fCurY + fTopCY - 5.0f - fMY, m_csKBWhite.iDarkRGB );
-                }
+                }*/
             }
             else
             {
@@ -2066,13 +2083,13 @@ void MainScreen::RenderKeys()
                     csKBWhite.iDarkRGB, csKBWhite.iDarkRGB, csKBWhite.iPrimaryRGB, csKBWhite.iPrimaryRGB );
                 m_pRenderer->DrawRect( fCurX + fKeyGap1 , fCurY + fTopCY + fNearCY - 2.0f, m_fWhiteCX - fKeyGap, 2.0f, csKBWhite.iDarkRGB );
 
-                if ( i == MIDI::C4 )
+                /*if ( i == MIDI::C4 )
                 {
                     float fMXGap = floor( m_fWhiteCX * 0.25f + 0.5f );
                     float fMCX = m_fWhiteCX - fMXGap * 2.0f - fKeyGap;
                     float fMY = max( fCurY + fTopCY + fNearCY - fMCX - 7.0f, fCurY + fSharpCY + 5.0f );
                     m_pRenderer->DrawRect( fCurX + fKeyGap1 + fMXGap, fMY, fMCX, fCurY + fTopCY + fNearCY - 7.0f - fMY, csKBWhite.iDarkRGB );
-                }
+                }*/
             }
             m_pRenderer->DrawRect( floor( fCurX + fKeyGap1 + m_fWhiteCX - fKeyGap + 0.5f ), fCurY, fKeyGap, fTopCY + fNearCY,
                 m_csKBBackground.iVeryDarkRGB, m_csKBBackground.iPrimaryRGB, m_csKBBackground.iPrimaryRGB, m_csKBBackground.iVeryDarkRGB );
@@ -2219,8 +2236,9 @@ void MainScreen::RenderText()
 
     // Draw the text
     m_pRenderer->BeginText();
-
-    RenderStatus(&rcStatus);
+    if (viz.bShowInfo) {
+        RenderStatus(&rcStatus);
+    }
     if (viz.bShowMarkers)
         RenderMarker(&rcMarker, m_sMarker.c_str());
     if (m_bZoomMove)
@@ -2246,41 +2264,61 @@ void MainScreen::RenderStatusLine(const char* left, const char* format, ...) {
 
 void MainScreen::RenderStatus(LPRECT prcStatus)
 {
-    constexpr float width = 156.0f;
-    ImGui::SetNextWindowPos(ImVec2(m_pRenderer->GetBufferWidth() - width + 1, -1.0f));
-    ImGui::SetNextWindowSize(ImVec2(width, 0.0f), ImGuiCond_Always);
-    ImGui::Begin("stats", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoNav |
-        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing);
+    Config& config = Config::GetConfig();
+    VizSettings viz = config.GetVizSettings();
+    if (!viz.bShowInfo)
+        return;
 
-    // Time
+    constexpr float width = 250.0f;
+    //ImGui::SetNextWindowPos(ImVec2(m_pRenderer->GetBufferWidth() - width + 1, -1.0f));
+    ImGui::SetNextWindowPos(ImVec2(-1.0f, -1.0f));
+    ImGui::SetNextWindowSize(ImVec2(width, 0.0f), ImGuiCond_Always);
+    ImGui::Begin("Stats", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoNav |
+        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing | 
+        ImGuiWindowFlags_NoCollapse
+    );
+
     const MIDI::MIDIInfo& mInfo = m_MIDI.GetInfo();
-    if (m_llStartTime >= 0)
+
+    if (m_llStartTime >= 0) {
+        // Tick
+        RenderStatusLine("Tick:", "%.0lf / %d", m_llStartTime * (1 / (m_iMicroSecsPerBeat / 1000000.0)) * mInfo.iDivision / 1000000, mInfo.iDivision);
+
+        // Time
         RenderStatusLine("Time:", "%lld:%04.1lf / %lld:%04.1lf",
             m_llStartTime / 60000000, (m_llStartTime % 60000000) / 1000000.0,
             mInfo.llTotalMicroSecs / 60000000, (mInfo.llTotalMicroSecs % 60000000) / 1000000.0);
-    else
+    }  
+    else {
+        // Tick
+        RenderStatusLine("Tick:", "0 / %d", mInfo.iDivision);
+
+        // Time
         RenderStatusLine("Time:", "\t-%lld:%04.1lf / %lld:%04.1lf",
             -m_llStartTime / 60000000, (-m_llStartTime % 60000000) / 1000000.0,
             mInfo.llTotalMicroSecs / 60000000, (mInfo.llTotalMicroSecs % 60000000) / 1000000.0);
-    
+    }
+        
+
     // Tempo
     RenderStatusLine("Tempo:", "%.3lf", 60000000.0 / m_iMicroSecsPerBeat);
 
+    // Notes
+    RenderStatusLine("Notes:", "%zu", m_iNotesPlayed);
+
+    // NPS
+    long long nps = 0;
+    for (int i = 0; i < m_dNPSNotes.size(); i++)
+        nps += std::get<1>(m_dNPSNotes[i]);
+    RenderStatusLine("NPS:", "%lld", nps);
+
+    // Polyphony
+    RenderStatusLine("Polyphony:", "%zu", m_iCurrentPolyphony);
+
     // Framerate
     if (m_bShowFPS && !m_bDumpFrames)
-        RenderStatusLine("FPS:", "%.1lf", m_dFPS);
-
-    // Nerd stats
-    Config& config = Config::GetConfig();
-    VizSettings viz = config.GetVizSettings();
-    if (viz.bNerdStats) {
-        long long nps = 0;
-        for (int i = 0; i < m_dNPSNotes.size(); i++)
-            nps += std::get<1>(m_dNPSNotes[i]);
-        RenderStatusLine("NPS:", "%lld", nps);
-        RenderStatusLine("Rendered:", "%llu", m_pRenderer->GetRenderedNotesCount());
-    }
+        RenderStatusLine("FPS:", "%.0lf", m_dFPS);
 
     ImGui::End();
 }
@@ -2296,7 +2334,7 @@ void MainScreen::RenderMarker(LPRECT prcPos, const char* sStr)
     m_pRenderer->DrawText(sStr, D3D12Renderer::Small, prcPos, 0, 0xFFFFFFFF);
     */
 
-    if (strlen(sStr)) {
+    /*if (strlen(sStr)) {
         ImGui::SetNextWindowPos(ImVec2(-1.0f, -1.0f));
         ImGui::SetNextWindowSize(ImVec2(0.0f, 0.0f), ImGuiCond_Once);
         ImGui::Begin("marker", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove |
@@ -2306,7 +2344,7 @@ void MainScreen::RenderMarker(LPRECT prcPos, const char* sStr)
         ImGui::Text("%s", sStr);
 
         ImGui::End();
-    }
+    }*/
 }
 
 void MainScreen::RenderMessage(LPRECT prcMsg, TCHAR* sMsg)
