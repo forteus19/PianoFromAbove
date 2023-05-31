@@ -222,6 +222,8 @@ void VizSettings::LoadDefaultValues() {
     this->sBackground = L"";
     this->bColorLoop = false;
     this->bShowInfo = true;
+    this->eInfoStyle = InfoStyle::PFA;
+    this->iRenderFPS = 60;
 }
 
 void AudioSettings::LoadMIDIDevices()
@@ -377,6 +379,8 @@ void VizSettings::LoadConfigValues(TiXmlElement* txRoot) {
         bColorLoop = (iAttrVal != 0);
     if (txViz->QueryIntAttribute("ShowInfo", &iAttrVal) == TIXML_SUCCESS)
         bShowInfo = (iAttrVal != 0);
+    if (txViz->QueryIntAttribute("RenderFPS", &iAttrVal) == TIXML_SUCCESS)
+        iRenderFPS = iAttrVal;
     std::string sTempStr;
     txViz->QueryStringAttribute("SplashMIDI", &sTempStr);
     sSplashMIDI = Util::StringToWstring(sTempStr);
@@ -385,6 +389,8 @@ void VizSettings::LoadConfigValues(TiXmlElement* txRoot) {
     sBackground = Util::StringToWstring(sTempStr);
     txViz->QueryIntAttribute("MarkerEncoding", (int*)&eMarkerEncoding);
     eMarkerEncoding = max(MarkerEncoding::CP1252, min(eMarkerEncoding, MarkerEncoding::UTF8));
+    txViz->QueryIntAttribute("InfoStyle", (int*)&eInfoStyle);
+    eInfoStyle = max(InfoStyle::PFA, min(eInfoStyle, InfoStyle::UMP));
 
     int r, g, b = 0;
     TiXmlElement* txBarColor = txViz->FirstChildElement("BarColor");
@@ -501,6 +507,8 @@ bool VizSettings::SaveConfigValues(TiXmlElement* txRoot) {
     txViz->SetAttribute("Background", Util::WstringToString(sBackground));
     txViz->SetAttribute("ColorLoop", bColorLoop);
     txViz->SetAttribute("ShowInfo", bShowInfo);
+    txViz->SetAttribute("InfoStyle", eInfoStyle);
+    txViz->SetAttribute("RenderFPS", iRenderFPS);
 
     TiXmlElement* txBarColor = new TiXmlElement("BarColor");
     txViz->LinkEndChild(txBarColor);

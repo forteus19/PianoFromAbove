@@ -185,7 +185,7 @@ public:
     };
     const MIDITrackInfo& GetInfo() const { return m_TrackInfo; }
 
-private:
+//private:
     MIDITrackInfo m_TrackInfo;
     vector< MIDIEvent* > m_vEvents;
     MIDI& m_MIDI;

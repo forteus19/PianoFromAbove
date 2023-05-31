@@ -1205,15 +1205,20 @@ GameState::GameError MainScreen::Logic( void )
             else if (!m_bMute && !m_vTrackSettings[pEvent->GetTrack()].aChannels[pEvent->GetChannel()].bMuted) {
                 m_OutDevice.PlayEvent(pEvent->GetEventCode(), pEvent->GetParam1(),
                     static_cast<int>(pEvent->GetParam2() * dVolumeCorrect + 0.5));
-                ++notes_played;
-                ++m_iNotesPlayed;
             }
             UpdateState( m_iStartPos );
             m_iStartPos++;
 
             // Update polyphony
             if (pEvent->GetChannelEventType() == MIDIChannelEvent::NoteOn) {
-                ++m_iCurrentPolyphony;
+                if (pEvent->GetParam2() == 0) { // 0 velocity note offs
+                    --m_iCurrentPolyphony;
+                }
+                else {
+                    ++notes_played;
+                    ++m_iNotesPlayed;
+                    ++m_iCurrentPolyphony;
+                }
             }
             if (pEvent->GetChannelEventType() == MIDIChannelEvent::NoteOff) {
                 --m_iCurrentPolyphony;
@@ -1228,6 +1233,10 @@ GameState::GameError MainScreen::Logic( void )
             }
             if (notes_played != 0)
                 m_dNPSNotes.push_back(std::make_tuple(m_llStartTime, notes_played));
+
+            m_llCurrentNPS = 0;
+            for (int i = 0; i < m_dNPSNotes.size(); i++)
+                m_llCurrentNPS += std::get<1>(m_dNPSNotes[i]);
         //}
     }
 
@@ -1338,6 +1347,8 @@ void MainScreen::UpdateState( int iPos )
 
 void MainScreen::JumpTo(long long llStartTime, bool bUpdateGUI)
 {
+    long long llPrevStartTime = m_llStartTime;
+
     // Reset NPS
     m_dNPSNotes.clear();
 
@@ -1402,6 +1413,7 @@ void MainScreen::JumpTo(long long llStartTime, bool bUpdateGUI)
     eventvec_t::const_iterator itOldProgramChange = m_itNextProgramChange;
     AdvanceIterators(llStartTime, true);
     PlaySkippedEvents(itOldProgramChange);
+    CountSkippedNotes(llPrevStartTime, llStartTime);
     m_iStartTick = GetCurrentTick(m_llStartTime);
 
     if (bUpdateGUI)
@@ -1452,6 +1464,35 @@ void MainScreen::PlaySkippedEvents(eventvec_t::const_iterator itOldProgramChange
     // Finally play the controller events. vControl is in reverse time order
     for (vector< MIDIChannelEvent* >::reverse_iterator it = vControl.rbegin(); it != vControl.rend(); ++it)
         m_OutDevice.PlayEvent((*it)->GetEventCode(), (*it)->GetParam1(), (*it)->GetParam2());
+}
+
+// TODO: reduce indentations
+void MainScreen::CountSkippedNotes(long long llOldTime, long long llNewTime) {
+    m_iNotesPlayed = 0;
+    m_iCurrentPolyphony = 0;
+    for (const auto track : m_MIDI.GetTracks()) {
+        for (const auto event : track->m_vEvents) {
+            if (event->GetEventType() == MIDIEvent::EventType::ChannelEvent) {
+                MIDIChannelEvent* cevent = reinterpret_cast<MIDIChannelEvent*>(event);
+                long long microsec = cevent->GetAbsMicroSec();
+                if (microsec < llNewTime) {
+                    MIDIChannelEvent::ChannelEventType type = cevent->GetChannelEventType();
+                    if (type == MIDIChannelEvent::ChannelEventType::NoteOn) {
+                        if (cevent->GetParam2() == 0) { // 0 velocity note offs
+                            --m_iCurrentPolyphony;
+                        }
+                        else {
+                            ++m_iNotesPlayed;
+                            ++m_iCurrentPolyphony;
+                        }
+                    }
+                    if (type == MIDIChannelEvent::ChannelEventType::NoteOff) {
+                        --m_iCurrentPolyphony;
+                    }
+                }
+            }
+        }
+    }
 }
 
 void MainScreen::ApplyMarker(unsigned char* data, size_t size) {
@@ -2262,6 +2303,18 @@ void MainScreen::RenderStatusLine(const char* left, const char* format, ...) {
     va_end(varargs);
 }
 
+string NumberFormatCommas(size_t value) {
+    string s = to_string(value);
+
+    for (int i = s.length(); i > 0; i -= 3) {
+        s.insert(i, ",");
+    }
+
+    s.pop_back();
+
+    return s;
+}
+
 void MainScreen::RenderStatus(LPRECT prcStatus)
 {
     Config& config = Config::GetConfig();
@@ -2269,56 +2322,75 @@ void MainScreen::RenderStatus(LPRECT prcStatus)
     if (!viz.bShowInfo)
         return;
 
-    constexpr float width = 250.0f;
-    //ImGui::SetNextWindowPos(ImVec2(m_pRenderer->GetBufferWidth() - width + 1, -1.0f));
-    ImGui::SetNextWindowPos(ImVec2(-1.0f, -1.0f));
+    const MIDI::MIDIInfo& mInfo = m_MIDI.GetInfo();
+    constexpr float width = 180.0f;
+
+    ImGui::SetNextWindowPos(ImVec2(m_pRenderer->GetBufferWidth() - width + 1, -1.0f));
+    //ImGui::SetNextWindowPos(ImVec2(-1.0f, -1.0f));
     ImGui::SetNextWindowSize(ImVec2(width, 0.0f), ImGuiCond_Always);
     ImGui::Begin("Stats", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoNav |
-        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing | 
+        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing |
         ImGuiWindowFlags_NoCollapse
     );
 
-    const MIDI::MIDIInfo& mInfo = m_MIDI.GetInfo();
-
-    if (m_llStartTime >= 0) {
-        // Tick
-        RenderStatusLine("Tick:", "%.0lf / %d", m_llStartTime * (1 / (m_iMicroSecsPerBeat / 1000000.0)) * mInfo.iDivision / 1000000, mInfo.iDivision);
-
+    switch (viz.eInfoStyle) {
+    case (VizSettings::InfoStyle::PFA): {
         // Time
-        RenderStatusLine("Time:", "%lld:%04.1lf / %lld:%04.1lf",
-            m_llStartTime / 60000000, (m_llStartTime % 60000000) / 1000000.0,
-            mInfo.llTotalMicroSecs / 60000000, (mInfo.llTotalMicroSecs % 60000000) / 1000000.0);
-    }  
-    else {
-        // Tick
-        RenderStatusLine("Tick:", "0 / %d", mInfo.iDivision);
+        if (m_llStartTime >= 0)
+            RenderStatusLine("Time:", "%lld:%04.1lf / %lld:%04.1lf",
+                m_llStartTime / 60000000, (m_llStartTime % 60000000) / 1000000.0,
+                mInfo.llTotalMicroSecs / 60000000, (mInfo.llTotalMicroSecs % 60000000) / 1000000.0);
+        else
+            RenderStatusLine("Time:", "\t-%lld:%04.1lf / %lld:%04.1lf",
+                -m_llStartTime / 60000000, (-m_llStartTime % 60000000) / 1000000.0,
+                mInfo.llTotalMicroSecs / 60000000, (mInfo.llTotalMicroSecs % 60000000) / 1000000.0);
 
-        // Time
-        RenderStatusLine("Time:", "\t-%lld:%04.1lf / %lld:%04.1lf",
-            -m_llStartTime / 60000000, (-m_llStartTime % 60000000) / 1000000.0,
-            mInfo.llTotalMicroSecs / 60000000, (mInfo.llTotalMicroSecs % 60000000) / 1000000.0);
+        // Framerate
+        if (m_bShowFPS && !m_bDumpFrames)
+            RenderStatusLine("FPS:", "%.1lf", m_dFPS);
+
+        // Score
+        RenderStatusLine("Score:", "N/A");
+    } break;
+    case (VizSettings::InfoStyle::UMP): {
+        if (m_llStartTime >= 0) {
+            // Tick
+            RenderStatusLine("Tick:", "%.0lf / %d", m_llStartTime * (1 / (m_iMicroSecsPerBeat / 1000000.0)) * mInfo.iDivision / 1000000, mInfo.iDivision);
+
+            // Time
+            RenderStatusLine("Time:", "%lld:%04.1lf / %lld:%04.1lf",
+                m_llStartTime / 60000000, (m_llStartTime % 60000000) / 1000000.0,
+                mInfo.llTotalMicroSecs / 60000000, (mInfo.llTotalMicroSecs % 60000000) / 1000000.0);
+        }
+        else {
+            // Tick
+            RenderStatusLine("Tick:", "0 / %d", mInfo.iDivision);
+
+            // Time
+            RenderStatusLine("Time:", "\t-%lld:%04.1lf / %lld:%04.1lf",
+                -m_llStartTime / 60000000, (-m_llStartTime % 60000000) / 1000000.0,
+                mInfo.llTotalMicroSecs / 60000000, (mInfo.llTotalMicroSecs % 60000000) / 1000000.0);
+        }
+
+
+        // Tempo
+        RenderStatusLine("Tempo:", "%.3lf", 60000000.0 / m_iMicroSecsPerBeat);
+
+        // Notes
+        RenderStatusLine("Notes:", NumberFormatCommas(m_iNotesPlayed).c_str());
+
+        // NPS
+        RenderStatusLine("NPS:", NumberFormatCommas(m_llCurrentNPS).c_str());
+
+        // Polyphony
+        RenderStatusLine("Polyphony:", NumberFormatCommas(m_iCurrentPolyphony).c_str());
+
+        // Framerate
+        if (m_bShowFPS && !m_bDumpFrames)
+            RenderStatusLine("FPS:", "%.0lf", m_dFPS);
+    } break;
     }
-        
-
-    // Tempo
-    RenderStatusLine("Tempo:", "%.3lf", 60000000.0 / m_iMicroSecsPerBeat);
-
-    // Notes
-    RenderStatusLine("Notes:", "%zu", m_iNotesPlayed);
-
-    // NPS
-    long long nps = 0;
-    for (int i = 0; i < m_dNPSNotes.size(); i++)
-        nps += std::get<1>(m_dNPSNotes[i]);
-    RenderStatusLine("NPS:", "%lld", nps);
-
-    // Polyphony
-    RenderStatusLine("Polyphony:", "%zu", m_iCurrentPolyphony);
-
-    // Framerate
-    if (m_bShowFPS && !m_bDumpFrames)
-        RenderStatusLine("FPS:", "%.0lf", m_dFPS);
 
     ImGui::End();
 }

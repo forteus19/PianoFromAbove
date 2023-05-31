@@ -181,6 +181,8 @@ struct VizSettings : public ISettings {
     std::wstring sBackground;
     bool bColorLoop;
     bool bShowInfo;
+    enum InfoStyle { PFA, UMP } eInfoStyle;
+    int iRenderFPS;
 };
 
 class Config : public ISettings

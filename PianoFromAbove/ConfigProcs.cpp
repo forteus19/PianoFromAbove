@@ -452,12 +452,21 @@ INT_PTR WINAPI VizProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         CheckDlgButton(hWnd, IDC_SHOWINFO, viz.bShowInfo);
 
         const wchar_t* codepages[] = { L"CP-1252 (Western)", L"CP-932 (Japanese)", L"UTF-8" };
+        const wchar_t* stylepages[] = { L"PFA Style", L"UMP Style" };
         for (int i = 0; i < sizeof(codepages) / sizeof(const wchar_t*); i++)
             SendMessage(GetDlgItem(hWnd, IDC_MARKERENC), CB_ADDSTRING, i, (LPARAM)codepages[i]);
+        for (int i = 0; i < sizeof(stylepages) / sizeof(const wchar_t*); i++)
+            SendMessage(GetDlgItem(hWnd, IDC_INFOSTYLE), CB_ADDSTRING, i, (LPARAM)stylepages[i]);
         SendMessage(GetDlgItem(hWnd, IDC_MARKERENC), CB_SETCURSEL, viz.eMarkerEncoding, 0);
+        SendMessage(GetDlgItem(hWnd, IDC_INFOSTYLE), CB_SETCURSEL, viz.eInfoStyle, 0);
 
         SetDlgItemTextW(hWnd, IDC_SPLASHMIDI, viz.sSplashMIDI.c_str());
         SetDlgItemTextW(hWnd, IDC_BACKGROUND, viz.sBackground.c_str());
+
+        char fpsbuf[10];
+        _snprintf_s(fpsbuf, sizeof(fpsbuf), "%d", viz.iRenderFPS);
+        SetDlgItemTextA(hWnd, IDC_RENDERFPS, fpsbuf);
+
         return TRUE;
     }
     case WM_COMMAND: {
@@ -513,6 +522,7 @@ INT_PTR WINAPI VizProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             VizSettings viz = config.GetVizSettings();
             wchar_t splash[1024]{};
             wchar_t background[1024]{};
+            char fpsbuf[10];
 
             viz.bTickBased = IsDlgButtonChecked(hWnd, IDC_TICKBASED);
             viz.bShowMarkers = IsDlgButtonChecked(hWnd, IDC_MARKERS);
@@ -526,6 +536,9 @@ INT_PTR WINAPI VizProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             viz.bDumpFrames = IsDlgButtonChecked(hWnd, IDC_FFMPEG);
             viz.bColorLoop = IsDlgButtonChecked(hWnd, IDC_COLORLOOP);
             viz.bShowInfo = IsDlgButtonChecked(hWnd, IDC_SHOWINFO);
+            viz.eInfoStyle = (VizSettings::InfoStyle)SendMessage(GetDlgItem(hWnd, IDC_INFOSTYLE), CB_GETCURSEL, 0, 0);
+            GetWindowTextA(GetDlgItem(hWnd, IDC_RENDERFPS), fpsbuf, sizeof(fpsbuf));
+            viz.iRenderFPS = stoi(fpsbuf);
 
             config.SetVizSettings(viz);
             SetWindowLongPtr(hWnd, DWLP_MSGRESULT, PSNRET_NOERROR);

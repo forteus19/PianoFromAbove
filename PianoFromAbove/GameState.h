@@ -198,6 +198,7 @@ private:
     void UpdateState( int iPos );
     void JumpTo(long long llStartTime, bool bUpdateGUI = true);
     void PlaySkippedEvents(eventvec_t::const_iterator itOldProgramChange);
+    void CountSkippedNotes(long long llOldTime, long long llNewTime);
     void ApplyMarker(unsigned char* data, size_t size);
     void AdvanceIterators( long long llTime, bool bIsJump );
     MIDIMetaEvent* GetPrevious( eventvec_t::const_iterator &itCurrent,
@@ -264,7 +265,10 @@ private:
     bool m_bMute;
     double m_dVolume;
     size_t m_iNotesPlayed = 0;
+    deque<tuple<long long, long long>> m_dNPSNotes;
+    long long m_llCurrentNPS;
     size_t m_iCurrentPolyphony = 0;
+    size_t m_iMaxPolyphony = 0;
     bool m_bTickMode = false;
 
     // FPS variables
@@ -287,7 +291,6 @@ private:
     vector< TrackSettings > m_vTrackSettings;
     vector< thread_work_t > m_vThreadWork;
     float m_pBends[16] = {};
-    deque<tuple<long long, long long>> m_dNPSNotes;
     std::wstring m_sCurBackground;
     bool m_bBackgroundLoaded;
 
